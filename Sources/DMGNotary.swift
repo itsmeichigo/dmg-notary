@@ -10,8 +10,6 @@ import Foundation
 import ArgumentParser
 import ShellOut
 
-var bundleID: String!
-
 @main
 struct DMGNotary: ParsableCommand {
 
@@ -22,26 +20,29 @@ struct DMGNotary: ParsableCommand {
     @Argument(help: "Path to the developer ID signed .app (doesn't have to be notarized)")
     var appFilePath: String
     
-    @Argument(help: "Your code signing identity, such as \"Developer ID Application: John Doe (XXXX123YY)\"")
-    var identity: String
-    
-    @Argument(help: "Your App Store Connect provider ID (same as your developer's team ID)")
-    var ascProvider: String
-    
-    @Argument(help: "Your App Store Connect e-mail")
-    var ascEmail: String
-    
-    @Argument(help: "Your App Store Connect app-specific password, or the identifier for a keychain item in the format @keychain:ITEMNAME")
-    var ascPassword: String
+    @Option(name: .long, help: "Your code signing identity, such as \"Developer ID Application: John Doe (XXXX123YY)\". If not specified, create-dmg will attempt to pick one from your Keychain.")
+    var identity: String?
 
     @Option(name: .long, help: "Custom name for the output DMG file (max \(Self.maxOutputDMGFilenameLength) characters)")
     var dmgName: String?
+
+    @Option(name: .long, help: "Your App Store Connect provider ID (same as your developer's team ID)")
+    var teamId: String?
+    
+    @Option(name: .long, help: "Your Developer ID (App Store Connect e-mail)")
+    var appleId: String?
+    
+    @Option(help: "App-specific password for your Apple ID. You will begiven a secure prompt on the command line if Apple ID and Team ID are provided and '--password' option is not specified.")
+    var password: String?
+
+    @Option(help: "Authenticate with credentials stored in the Keychain for notarytool.")
+    var keychainProfile: String?
 
     @Flag(help: "Verbose output")
     var verbose = false
     
     public func run() throws {
-        
+        let url = try prepareDMG()
     }
 }
 
@@ -79,12 +80,6 @@ private extension DMGNotary {
         guard let bundleVersion = appBundle.infoDictionary?["CFBundleVersion"] as? String else {
             throw Failure("Failed to read CFBundleVersion from app's Info.plist")
         }
-
-        guard let identifier = appBundle.bundleIdentifier else {
-            throw Failure("Couldn't get app bundle identifier")
-        }
-
-        bundleID = identifier
         
         let outputDMGName = dmgName ?? "\(sanitizedAppName)_v\(shortVersionString)-\(bundleVersion)"
 
@@ -93,12 +88,23 @@ private extension DMGNotary {
         }
         
         if verbose {
-            print("Primary bundle ID is \(identifier)")
             print("Output DMG will be named \(outputDMGName)")
             print("Using temporary directory \(tempDir.path)")
         }
 
-        try shellOut(to: "create-dmg", arguments: ["--identity=\"\(identity)\"", "--overwrite", "--dmg-title=\"\(outputDMGName)\"", "\"\(appFilePath)\"", tempDir.path])
+        let arguments: [String] = {
+            var args = [
+                "--overwrite",
+                "--dmg-title=\"\(outputDMGName)\"",
+                "\"\(appFilePath)\"",
+                tempDir.path
+            ]
+            if let identity {
+                args.append("--identity=\"\(identity)\"")
+            }
+            return args
+        }()
+        try shellOut(to: "create-dmg", arguments: arguments)
 
         if verbose {
             print("Renaming output DMG")
@@ -117,6 +123,10 @@ private extension DMGNotary {
             .appendingPathExtension("dmg")
 
         try FileManager.default.moveItem(at: originalDMGURL, to: outputDMGURL)
+
+        if verbose {
+            print("Created DMG at \(outputDMGURL)")
+        }
 
         return outputDMGURL
     }
