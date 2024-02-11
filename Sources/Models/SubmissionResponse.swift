@@ -18,4 +18,17 @@ enum SubmissionStatus: String, Decodable {
     case inProgress = "In Progress"
     case invalid = "Invalid"
     case rejected = "Rejected"
+
+    var finalMessage: String {
+        switch self {
+        case .accepted:
+            "🎉 Your DMG is notarized and stapled!"
+        case .rejected:
+            "❌ Notarization failed. Please check the saved log for more information."
+        case .invalid:
+            "❌ Invalid notarization request. Please try again."
+        case .inProgress:
+            "⏳ Notarization in progress. Please check the saved log for more information."
+        }
+    }
 }
