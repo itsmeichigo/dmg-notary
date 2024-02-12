@@ -15,7 +15,7 @@ struct DMGNotary: ParsableCommand {
 
     private static let maxOutputDMGFilenameLength = 27
 
-    public static let configuration = CommandConfiguration(abstract: "Create a DMG and notarize it for distribution using Apple notary service.")
+    public static let configuration = CommandConfiguration(abstract: "Create a DMG and notarize it for distribution using the Apple notary service.")
 
     @Argument(help: "Path to the developer ID signed .app (doesn't have to be notarized)")
     var appFilePath: String
@@ -35,7 +35,7 @@ struct DMGNotary: ParsableCommand {
     @Option(help: "App-specific password for your Apple ID. You will be given a secure prompt on the command line if Apple ID and Team ID are provided and '--password' option is not specified.")
     var password: String?
 
-    @Option(help: "Authenticate with credentials stored in the Keychain for notarytool.")
+    @Option(help: "Authenticate with credentials stored in the Keychain for the Apple notary service.")
     var keychainProfile: String?
 
     @Flag(help: "Verbose output")
@@ -48,7 +48,7 @@ struct DMGNotary: ParsableCommand {
             } else if let teamId, let appleId {
                 return .credentials(teamID: teamId, appleID: appleId, password: password)
             }
-            throw Failure("❌ Please specify either --keychain-profile or credentials for notarytool.")
+            throw Failure("❌ Please specify either --keychain-profile or credentials for the Apple notary service.")
         }()
 
         let tempFileURL = try prepareDMG()
@@ -174,7 +174,7 @@ private extension DMGNotary {
 
         let output = try shellOut(to: "xcrun notarytool submit", arguments: arguments)
         guard let data = output.data(using: .utf8) else {
-            throw Failure("❌ Failed to parse response from notarytool.")
+            throw Failure("❌ Failed to parse response from the Apple notary service.")
         }
         let jsonDecoder = JSONDecoder()
         return try jsonDecoder.decode(SubmissionResponse.self, from: data)
