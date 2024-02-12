@@ -8,7 +8,7 @@ Inspired by [dmgdist](https://github.com/insidegui/dmgdist).
 
 ## Usage
 ```
-OVERVIEW: Create a DMG and notarize it for distribution.
+OVERVIEW: Create a DMG and notarize it for distribution using the Apple notary service.
 
 USAGE: dmg-notary <app-file-path> [--identity <identity>] [--dmg-name <dmg-name>] [--team-id <team-id>] [--apple-id <apple-id>] [--password <password>] [--keychain-profile <keychain-profile>] [--verbose]
 
