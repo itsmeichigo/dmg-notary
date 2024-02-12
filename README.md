@@ -70,3 +70,6 @@ $ swift run dmg-notary --help
 
 ## Contribution
 This tool is very simple and is designed to automate the process of creating, uploading and stapling a DMG for a Mac app. If you find any issues, feel free to open a pull request with the fix.
+
+## Alternative notarization method
+A simpler way to notarize mac apps is to add a post-action script to the Archive step of your app's scheme. More details can be found [here](https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/customizing_the_notarization_workflow/customizing_the_xcode_archive_process).
