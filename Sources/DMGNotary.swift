@@ -15,7 +15,7 @@ struct DMGNotary: ParsableCommand {
 
     private static let maxOutputDMGFilenameLength = 27
 
-    public static let configuration = CommandConfiguration(abstract: "Create a DMG and notarize it for distribution.")
+    public static let configuration = CommandConfiguration(abstract: "Create a DMG and notarize it for distribution using Apple notary service.")
 
     @Argument(help: "Path to the developer ID signed .app (doesn't have to be notarized)")
     var appFilePath: String
@@ -32,7 +32,7 @@ struct DMGNotary: ParsableCommand {
     @Option(name: .long, help: "Your Developer ID (App Store Connect e-mail)")
     var appleId: String?
     
-    @Option(help: "App-specific password for your Apple ID. You will begiven a secure prompt on the command line if Apple ID and Team ID are provided and '--password' option is not specified.")
+    @Option(help: "App-specific password for your Apple ID. You will be given a secure prompt on the command line if Apple ID and Team ID are provided and '--password' option is not specified.")
     var password: String?
 
     @Option(help: "Authenticate with credentials stored in the Keychain for notarytool.")
@@ -48,7 +48,7 @@ struct DMGNotary: ParsableCommand {
             } else if let teamId, let appleId {
                 return .credentials(teamID: teamId, appleID: appleId, password: password)
             }
-            throw Failure("⛔️ Please specify either --keychain-profile or credentials for notarytool.")
+            throw Failure("❌ Please specify either --keychain-profile or credentials for notarytool.")
         }()
 
         let tempFileURL = try prepareDMG()
@@ -81,7 +81,7 @@ private extension DMGNotary {
         }
 
         guard FileManager.default.fileExists(atPath: appFileURL.path) else {
-            throw Failure("⛔️ The input app doesn't exist at \(appFileURL.path)")
+            throw Failure("❌ The input app doesn't exist at \(appFileURL.path)")
         }
 
         let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -92,25 +92,25 @@ private extension DMGNotary {
         }
 
         guard let appBundle = Bundle(url: appFileURL) else {
-            throw Failure("⛔️ Failed to construct app bundle")
+            throw Failure("❌ Failed to construct app bundle")
         }
 
         guard let shortVersionString = appBundle.infoDictionary?["CFBundleShortVersionString"] as? String else {
-            throw Failure("⛔️ Failed to read CFBundleShortVersionString from app's Info.plist")
+            throw Failure("❌ Failed to read CFBundleShortVersionString from app's Info.plist")
         }
 
         guard let bundleVersion = appBundle.infoDictionary?["CFBundleVersion"] as? String else {
-            throw Failure("⛔️ Failed to read CFBundleVersion from app's Info.plist")
+            throw Failure("❌ Failed to read CFBundleVersion from app's Info.plist")
         }
         
         let outputDMGName = dmgName ?? "\(sanitizedAppName)_v\(shortVersionString)-\(bundleVersion)"
 
         guard outputDMGName.count < Self.maxOutputDMGFilenameLength else {
-            throw Failure("⛔️ The output DMG file name \"\(outputDMGName)\" exceeds the maximum character limit of \(Self.maxOutputDMGFilenameLength).\nPlease specify a shorter custom name with the --dmg-name option.")
+            throw Failure("❌ The output DMG file name \"\(outputDMGName)\" exceeds the maximum character limit of \(Self.maxOutputDMGFilenameLength).\nPlease specify a shorter custom name with the --dmg-name option.")
         }
         
         if verbose {
-            print("✏️ Output DMG will be named \(outputDMGName)")
+            print("ℹ️ Output DMG will be named \(outputDMGName)")
             print("📁 Using temporary directory \(tempDir.path)")
         }
 
@@ -129,11 +129,11 @@ private extension DMGNotary {
         try shellOut(to: "create-dmg", arguments: arguments)
 
         guard let enumerator = FileManager.default.enumerator(at: tempDir, includingPropertiesForKeys: nil) else {
-            throw Failure("⛔️ Failed to read output directory")
+            throw Failure("❌ Failed to read output directory")
         }
 
         guard let originalDMGURL = enumerator.allObjects.compactMap({ $0 as? URL }).first(where: { $0.pathExtension.lowercased() == "dmg" }) else {
-            throw Failure("⛔️ Couldn't find output DMG in temporary directory")
+            throw Failure("❌ Couldn't find output DMG in temporary directory")
         }
 
         let outputDMGURL = tempDir
@@ -151,7 +151,22 @@ private extension DMGNotary {
             print("📤 Submitting DMG for notarization...")
         }
 
-        let arguments = authenticationMethod.argumentsForNotary + [
+        let updatedMethod: AuthenticationMethod = {
+            if case let .credentials(teamID, appleID, password) = authenticationMethod,
+               password == nil {
+                if let secret = promptForPassword(fileName: fileURL.lastPathComponent,
+                                                  teamID: teamID,
+                                                  appleID: appleID) {
+                    return .credentials(teamID: teamID, appleID: appleID, password: secret)
+                } else {
+                    Self.exit(withError: Failure("❌ Insufficient credentials for the Apple notary service."))
+                }
+            } else {
+                return authenticationMethod
+            }
+        }()
+
+        let arguments = updatedMethod.argumentsForNotary + [
             "\(fileURL.path)",
             "--output-format \"json\"",
             "--wait"
@@ -159,7 +174,7 @@ private extension DMGNotary {
 
         let output = try shellOut(to: "xcrun notarytool submit", arguments: arguments)
         guard let data = output.data(using: .utf8) else {
-            throw Failure("☠️ Failed to parse response from notarytool.")
+            throw Failure("❌ Failed to parse response from notarytool.")
         }
         let jsonDecoder = JSONDecoder()
         return try jsonDecoder.decode(SubmissionResponse.self, from: data)
@@ -216,5 +231,22 @@ private extension DMGNotary {
             print("🧹 Cleaning up temporary files...")
         }
         try FileManager.default.removeItem(at: url)
+    }
+
+    /// Asks for the password if not provided as part of the credentials.
+    func promptForPassword(fileName: String, teamID: String, appleID: String) -> String? {
+        print("⏳ Conducting pre-submission checks for \(fileName) and initiating connection to the Apple notary service...")
+        print("Password for \(appleID):")
+        let secret = String(cString: getpass(""))
+        if secret.isEmpty {
+            print("Password should not be empty. Try again? Y/N:")
+            if let response = readLine(), response.uppercased() == "Y" {
+                return promptForPassword(fileName: fileName, teamID: teamID, appleID: appleID)
+            } else {
+                return nil
+            }
+        } else {
+            return secret
+        }
     }
 }
